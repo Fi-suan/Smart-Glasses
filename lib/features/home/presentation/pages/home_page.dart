@@ -112,6 +112,7 @@ class _DeviceStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state is DeviceConnected) {
+      final connectedState = state as DeviceConnected;
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -141,9 +142,9 @@ class _DeviceStatusCard extends StatelessWidget {
                         color: Colors.green,
                       ),
                     ),
-                    Text(state.device.name),
-                    if (state.device.batteryLevel != null)
-                      Text('Battery: ${state.device.batteryLevel}%'),
+                    Text(connectedState.device.name),
+                    if (connectedState.device.batteryLevel != null)
+                      Text('Battery: ${connectedState.device.batteryLevel}%'),
                   ],
                 ),
               ),

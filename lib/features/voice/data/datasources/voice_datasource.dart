@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'package:speech_to_text/speech_to_text.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/voice_command_model.dart';
 import '../../../../core/utils/logger.dart';
@@ -15,10 +13,8 @@ abstract class VoiceDataSource {
 }
 
 class VoiceDataSourceImpl implements VoiceDataSource {
-  final SpeechToText _speechToText = SpeechToText();
-  final FlutterTts _flutterTts = FlutterTts();
   final _commandController = StreamController<VoiceCommandModel>.broadcast();
-  
+
   bool _isInitialized = false;
   bool _isListening = false;
 
@@ -28,32 +24,11 @@ class VoiceDataSourceImpl implements VoiceDataSource {
       // Request microphone permission
       final micStatus = await Permission.microphone.request();
       if (!micStatus.isGranted) {
-        throw Exception('Microphone permission required');
+        AppLogger.warning('Microphone permission not granted');
       }
 
-      // Initialize Speech to Text
-      _isInitialized = await _speechToText.initialize(
-        onError: (error) {
-          AppLogger.error('Speech recognition error: ${error.errorMsg}');
-          _commandController.addError(error.errorMsg);
-        },
-        onStatus: (status) {
-          AppLogger.debug('Speech recognition status: $status');
-          _isListening = status == 'listening';
-        },
-      );
-
-      if (!_isInitialized) {
-        throw Exception('Failed to initialize speech recognition');
-      }
-
-      // Initialize TTS
-      await _flutterTts.setLanguage('en-US');
-      await _flutterTts.setSpeechRate(0.5);
-      await _flutterTts.setVolume(1.0);
-      await _flutterTts.setPitch(1.0);
-
-      AppLogger.info('Voice services initialized');
+      _isInitialized = true;
+      AppLogger.info('Voice services initialized (stub mode - speech packages disabled)');
     } catch (e) {
       AppLogger.error('Voice initialization error', e);
       rethrow;
@@ -72,23 +47,11 @@ class VoiceDataSourceImpl implements VoiceDataSource {
     }
 
     try {
-      await _speechToText.listen(
-        onResult: (result) {
-          if (result.finalResult) {
-            final command = VoiceCommandModel(
-              text: result.recognizedWords,
-              confidence: result.confidence,
-              timestamp: DateTime.now(),
-            );
-            _commandController.add(command);
-            AppLogger.info('Voice command: ${result.recognizedWords}');
-          }
-        },
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 3),
-        partialResults: false,
-        cancelOnError: true,
-      );
+      _isListening = true;
+      AppLogger.info('Voice listening started (stub mode)');
+
+      // TODO: Implement actual speech recognition when packages are re-enabled
+      // For now, this is a stub implementation
     } catch (e) {
       AppLogger.error('Start listening error', e);
       rethrow;
@@ -98,7 +61,6 @@ class VoiceDataSourceImpl implements VoiceDataSource {
   @override
   Future<void> stopListening() async {
     if (_isListening) {
-      await _speechToText.stop();
       _isListening = false;
       AppLogger.info('Stopped listening');
     }
@@ -110,9 +72,8 @@ class VoiceDataSourceImpl implements VoiceDataSource {
   @override
   Future<void> speak(String text) async {
     try {
-      await stopSpeaking(); // Stop any ongoing speech
-      await _flutterTts.speak(text);
-      AppLogger.info('Speaking: $text');
+      AppLogger.info('Speaking (stub mode): $text');
+      // TODO: Implement actual TTS when packages are re-enabled
     } catch (e) {
       AppLogger.error('Speak error', e);
       rethrow;
@@ -121,13 +82,10 @@ class VoiceDataSourceImpl implements VoiceDataSource {
 
   @override
   Future<void> stopSpeaking() async {
-    await _flutterTts.stop();
+    AppLogger.info('Stop speaking (stub mode)');
   }
 
   void dispose() {
     _commandController.close();
-    _speechToText.stop();
-    _flutterTts.stop();
   }
 }
-

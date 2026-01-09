@@ -15,31 +15,31 @@ class AppRouter {
   static const String navigation = '/navigation';
   static const String settings = '/settings';
 
-  static Route<dynamic> generateRoute(RouteSettings settings) {
-    switch (settings.name) {
+  static Route<dynamic> generateRoute(RouteSettings routeSettings) {
+    switch (routeSettings.name) {
       case splash:
         return MaterialPageRoute(builder: (_) => const SplashPage());
-      
+
       case login:
         return MaterialPageRoute(builder: (_) => const LoginPage());
-      
+
       case home:
         return MaterialPageRoute(builder: (_) => const HomePage());
-      
+
       case deviceConnection:
         return MaterialPageRoute(builder: (_) => const DeviceConnectionPage());
-      
+
       case navigation:
         return MaterialPageRoute(builder: (_) => const NavigationPage());
-      
+
       case settings:
         return MaterialPageRoute(builder: (_) => const SettingsPage());
-      
+
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
             body: Center(
-              child: Text('No route defined for ${settings.name}'),
+              child: Text('No route defined for ${routeSettings.name}'),
             ),
           ),
         );

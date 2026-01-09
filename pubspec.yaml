@@ -28,8 +28,8 @@ dependencies:
   flutter_polyline_points: ^2.0.1
   
   # Voice & AI
-  speech_to_text: ^6.5.1
-  flutter_tts: ^3.8.5
+  # speech_to_text: ^6.5.1  # Kotlin compatibility issue - оставляем закомментированным
+  flutter_tts: ^4.2.0  # Попробуем более новую версию
   
   # Network & API
   dio: ^5.4.0
@@ -56,6 +56,14 @@ dependencies:
   flutter_svg: ^2.0.9
   google_fonts: ^6.1.0
   animations: ^2.0.11
+  provider: ^6.1.5+1
+
+  # Camera
+  camera: ^0.10.5+9
+  image_picker: ^1.0.7
+
+  # HTTP for AI
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -70,16 +78,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
+
   assets:
     - assets/images/
     - assets/icons/
     - assets/sounds/
-  
-  fonts:
-    - family: SFPro
-      fonts:
-        - asset: assets/fonts/SFProDisplay-Regular.ttf
-        - asset: assets/fonts/SFProDisplay-Bold.ttf
-          weight: 700
 

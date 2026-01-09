@@ -4,6 +4,7 @@ import '../../../../core/error/failures.dart';
 import '../../domain/entities/route.dart';
 import '../../domain/repositories/navigation_repository.dart';
 import '../datasources/navigation_datasource.dart';
+import '../models/route_model.dart';
 import '../../../../core/utils/logger.dart';
 
 class NavigationRepositoryImpl implements NavigationRepository {

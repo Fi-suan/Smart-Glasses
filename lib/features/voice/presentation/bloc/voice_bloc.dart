@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../domain/entities/voice_command.dart';
 import '../../domain/usecases/listen_voice_usecase.dart';
 import '../../domain/usecases/speak_usecase.dart';
 import 'voice_event.dart';
