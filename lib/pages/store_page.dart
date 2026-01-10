@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
+import '../data/products_data.dart';
 import '../services/cart_service.dart';
 import '../services/tts_service.dart';
 import '../services/vibration_service.dart';
+import 'payment_page.dart';
 
 class StorePage extends StatefulWidget {
   const StorePage({super.key});
@@ -16,49 +18,8 @@ class _StorePageState extends State<StorePage> {
   final TtsService _tts = TtsService();
   final VibrationService _vibration = VibrationService();
 
-  // Mock товары
-  final List<Product> _products = [
-    Product(
-      id: '1',
-      name: 'Умные очки SmartVision Pro',
-      description: 'AI камера, GPS навигация, голосовой помощник. 12 часов автономной работы.',
-      price: 45000,
-      imageUrl: 'https://example.com/glasses1.jpg',
-      category: 'glasses',
-    ),
-    Product(
-      id: '2',
-      name: 'Умные очки EchoSight',
-      description: 'Распознавание объектов, чтение текста, определение препятствий.',
-      price: 35000,
-      imageUrl: 'https://example.com/glasses2.jpg',
-      category: 'glasses',
-    ),
-    Product(
-      id: '3',
-      name: 'Умная трость Navigate Plus',
-      description: 'Вибрация при препятствиях, GPS трекер, водонепроницаемая.',
-      price: 15000,
-      imageUrl: 'https://example.com/cane1.jpg',
-      category: 'cane',
-    ),
-    Product(
-      id: '4',
-      name: 'Умные часы VoiceTime',
-      description: 'Голосовое озвучивание времени, пульсометр, SOS кнопка.',
-      price: 8000,
-      imageUrl: 'https://example.com/watch1.jpg',
-      category: 'watch',
-    ),
-    Product(
-      id: '5',
-      name: 'Тактильный браслет AlertBand',
-      description: 'Вибрационные уведомления, Bluetooth, водонепроницаемый.',
-      price: 5000,
-      imageUrl: 'https://example.com/band1.jpg',
-      category: 'accessories',
-    ),
-  ];
+  // Используем реальный каталог товаров
+  final List<Product> _products = ProductsData.allProducts;
 
   @override
   void initState() {
@@ -136,7 +97,7 @@ class _StorePageState extends State<StorePage> {
           child: InkWell(
             onTap: () {
               _vibration.buttonPress();
-              _tts.speak("${product.name}. Цена ${product.price} рублей. ${product.description}");
+              _tts.speak("${product.name}. Цена ${product.formattedPrice}. ${product.description}");
             },
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -145,18 +106,30 @@ class _StorePageState extends State<StorePage> {
                 children: [
                   Row(
                     children: [
-                      // Иконка категории
+                      // Градиент категории
                       Container(
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
+                          gradient: _getGradientForCategory(product.category),
                           borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _getGradientForCategory(product.category).colors.first.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        child: Icon(
-                          _getIconForCategory(product.category),
-                          size: 32,
-                          color: Theme.of(context).colorScheme.primary,
+                        child: Center(
+                          child: Text(
+                            _getCategoryInitials(product.category),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -173,7 +146,7 @@ class _StorePageState extends State<StorePage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${product.price} ₽',
+                              product.formattedPrice,
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -199,12 +172,13 @@ class _StorePageState extends State<StorePage> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        _vibration.buttonPress();
+                      onPressed: () async {
                         if (isInCart) {
+                          await _vibration.buttonPress();
                           cart.removeFromCart(product.id);
                           _tts.speak("${product.name} удалён из корзины");
                         } else {
+                          await _vibration.confirmation(); // Двойная короткая для подтверждения
                           cart.addToCart(product);
                           _tts.speak("${product.name} добавлен в корзину");
                         }
@@ -233,18 +207,53 @@ class _StorePageState extends State<StorePage> {
     );
   }
 
-  IconData _getIconForCategory(String category) {
+  LinearGradient _getGradientForCategory(ProductCategory category) {
     switch (category) {
-      case 'glasses':
-        return Icons.visibility;
-      case 'cane':
-        return Icons.accessible;
-      case 'watch':
-        return Icons.watch;
-      case 'accessories':
-        return Icons.bluetooth;
-      default:
-        return Icons.shopping_bag;
+      case ProductCategory.glasses:
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)], // Темно-синий -> синий
+        );
+      case ProductCategory.canes:
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF065F46), Color(0xFF10B981)], // Темно-зеленый -> зеленый
+        );
+      case ProductCategory.bracelets:
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF7C2D12), Color(0xFFF97316)], // Темно-оранжевый -> оранжевый
+        );
+      case ProductCategory.audiobooks:
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF581C87), Color(0xFFA855F7)], // Темно-фиолетовый -> фиолетовый
+        );
+      case ProductCategory.accessories:
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF374151), Color(0xFF6B7280)], // Темно-серый -> серый
+        );
+    }
+  }
+
+  String _getCategoryInitials(ProductCategory category) {
+    switch (category) {
+      case ProductCategory.glasses:
+        return 'УО'; // Умные Очки
+      case ProductCategory.canes:
+        return 'Т'; // Трости
+      case ProductCategory.bracelets:
+        return 'Б'; // Браслеты
+      case ProductCategory.audiobooks:
+        return 'А'; // Аудиокниги
+      case ProductCategory.accessories:
+        return 'Д'; // Дополнительно
     }
   }
 
@@ -273,7 +282,7 @@ class _StorePageState extends State<StorePage> {
       return;
     }
 
-    _tts.speak("В корзине ${cart.itemCount} товаров на сумму ${cart.totalPrice} рублей");
+    _tts.speak("В корзине ${cart.itemCount} товаров на сумму ${_formatPrice(cart.totalPrice)}");
 
     showDialog(
       context: context,
@@ -292,9 +301,9 @@ class _StorePageState extends State<StorePage> {
                     final item = cart.items[index];
                     return ListTile(
                       title: Text(item.product.name),
-                      subtitle: Text('${item.product.price} ₽ x ${item.quantity}'),
+                      subtitle: Text('${item.product.formattedPrice} x ${item.quantity}'),
                       trailing: Text(
-                        '${item.totalPrice} ₽',
+                        _formatPrice(item.totalPrice),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -316,7 +325,7 @@ class _StorePageState extends State<StorePage> {
                     ),
                   ),
                   Text(
-                    '${cart.totalPrice} ₽',
+                    _formatPrice(cart.totalPrice),
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -356,7 +365,7 @@ class _StorePageState extends State<StorePage> {
   void _showCheckoutDialog(BuildContext context) {
     final cart = Provider.of<CartService>(context, listen: false);
 
-    _tts.speak("Оформление заказа. Общая сумма ${cart.totalPrice} рублей. Подтвердите заказ.");
+    _tts.speak("Оформление заказа. Общая сумма ${_formatPrice(cart.totalPrice)}. Подтвердите заказ.");
 
     showDialog(
       context: context,
@@ -372,7 +381,7 @@ class _StorePageState extends State<StorePage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Сумма: ${cart.totalPrice} ₽',
+              'Сумма: ${_formatPrice(cart.totalPrice)}',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -399,22 +408,45 @@ class _StorePageState extends State<StorePage> {
             child: const Text('Отмена'),
           ),
           ElevatedButton(
-            onPressed: () {
-              _vibration.buttonPress();
-              _tts.speak("Заказ успешно оформлен! Мы свяжемся с вами в ближайшее время.");
-              cart.clear();
+            onPressed: () async {
+              await _vibration.buttonPress();
+              _tts.announceButton("Перейти к оплате");
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Заказ оформлен! Ожидайте звонка.'),
-                  duration: Duration(seconds: 3),
+
+              // Переход на страницу оплаты
+              final paymentSuccess = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PaymentPage(
+                    amount: cart.totalPrice,
+                    itemCount: cart.itemCount,
+                  ),
                 ),
               );
+
+              // Если оплата прошла успешно
+              if (paymentSuccess == true && mounted) {
+                cart.clear();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Заказ успешно оформлен! Ожидайте звонка.'),
+                    duration: Duration(seconds: 3),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
             },
-            child: const Text('Подтвердить заказ'),
+            child: const Text('Перейти к оплате'),
           ),
         ],
       ),
     );
+  }
+
+  String _formatPrice(double price) {
+    return '${price.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]} ',
+    )} ₸';
   }
 }

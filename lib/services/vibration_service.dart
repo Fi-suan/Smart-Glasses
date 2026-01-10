@@ -85,14 +85,93 @@ class VibrationService {
     }
   }
 
-  // Вибрация при успешном действии
+  // Вибрация при успешном действии (тройная короткая)
   Future<void> success() async {
-    await vibrate(VibrationType.light);
+    if (!_isEnabled) return;
+    try {
+      await HapticFeedback.lightImpact();
+      await Future.delayed(const Duration(milliseconds: 100));
+      await HapticFeedback.lightImpact();
+      await Future.delayed(const Duration(milliseconds: 100));
+      await HapticFeedback.lightImpact();
+      debugPrint('📳 Vibration: success (triple)');
+    } catch (e) {
+      debugPrint('Vibration error: $e');
+    }
   }
 
-  // Вибрация при ошибке
+  // Вибрация при ошибке (двойная средняя)
   Future<void> error() async {
-    await vibrate(VibrationType.heavy);
+    if (!_isEnabled) return;
+    try {
+      await HapticFeedback.mediumImpact();
+      await Future.delayed(const Duration(milliseconds: 150));
+      await HapticFeedback.mediumImpact();
+      debugPrint('📳 Vibration: error (double)');
+    } catch (e) {
+      debugPrint('Vibration error: $e');
+    }
+  }
+
+  // Паттерн SOS для критической опасности (... --- ...)
+  Future<void> sos() async {
+    if (!_isEnabled) return;
+    try {
+      // S (три короткие)
+      for (int i = 0; i < 3; i++) {
+        await HapticFeedback.lightImpact();
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // O (три длинные)
+      for (int i = 0; i < 3; i++) {
+        await HapticFeedback.heavyImpact();
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // S (три короткие)
+      for (int i = 0; i < 3; i++) {
+        await HapticFeedback.lightImpact();
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      debugPrint('📳 Vibration: SOS');
+    } catch (e) {
+      debugPrint('Vibration error: $e');
+    }
+  }
+
+  // Пульсирующая вибрация для близкой опасности
+  Future<void> pulsingDanger({int pulses = 5}) async {
+    if (!_isEnabled) return;
+    try {
+      for (int i = 0; i < pulses; i++) {
+        await HapticFeedback.heavyImpact();
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      debugPrint('📳 Vibration: pulsing danger ($pulses pulses)');
+    } catch (e) {
+      debugPrint('Vibration error: $e');
+    }
+  }
+
+  // Уведомление (одна средняя)
+  Future<void> notification() async {
+    await vibrate(VibrationType.medium);
+  }
+
+  // Подтверждение (две короткие быстрые)
+  Future<void> confirmation() async {
+    if (!_isEnabled) return;
+    try {
+      await HapticFeedback.lightImpact();
+      await Future.delayed(const Duration(milliseconds: 50));
+      await HapticFeedback.lightImpact();
+      debugPrint('📳 Vibration: confirmation');
+    } catch (e) {
+      debugPrint('Vibration error: $e');
+    }
   }
 
   // Включить/выключить вибрацию

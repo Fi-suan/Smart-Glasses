@@ -47,9 +47,11 @@ class DirectionsService {
 
   DirectionsService._internal();
 
-  // TODO: Заменить на реальный API ключ Google Maps
-  static const String _apiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
+  static const String _apiKey = 'AIzaSyDHLPatV3_3xG1cdx0nvEhxCdn2XEgnzac';
   static const String _baseUrl = 'https://maps.googleapis.com/maps/api/directions/json';
+
+  // Кэшированный город пользователя
+  String? _userCity;
 
   // Получение маршрута между двумя точками
   Future<DirectionsRoute?> getDirections({
@@ -101,8 +103,11 @@ class DirectionsService {
 
       final origin = LatLng(position.latitude, position.longitude);
 
-      // Геокодируем адрес назначения
-      final destination = await _geocodeAddress(destinationAddress);
+      // Геокодируем адрес назначения с учетом текущей позиции (радиус 50 км)
+      final destination = await _geocodeAddress(
+        destinationAddress,
+        userLocation: origin,
+      );
       if (destination == null) {
         debugPrint('❌ Failed to geocode address: $destinationAddress');
         return null;
@@ -118,12 +123,16 @@ class DirectionsService {
     }
   }
 
-  // Геокодирование адреса в координаты
-  Future<LatLng?> _geocodeAddress(String address) async {
+  // Получение города пользователя по координатам
+  Future<String?> _getUserCity(LatLng location) async {
+    if (_userCity != null) {
+      return _userCity; // Используем кэш
+    }
+
     try {
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/geocode/json'
-        '?address=${Uri.encodeComponent(address)}'
+        '?latlng=${location.latitude},${location.longitude}'
         '&language=ru'
         '&key=$_apiKey',
       );
@@ -134,8 +143,96 @@ class DirectionsService {
         final data = json.decode(response.body);
 
         if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          // Ищем компонент "locality" (город)
+          for (var result in data['results']) {
+            for (var component in result['address_components']) {
+              final types = component['types'] as List;
+              if (types.contains('locality')) {
+                _userCity = component['long_name'];
+                debugPrint('📍 Город пользователя: $_userCity');
+                return _userCity;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error getting user city: $e');
+    }
+
+    return null;
+  }
+
+  // Геокодирование адреса в координаты с учетом текущей локации
+  Future<LatLng?> _geocodeAddress(
+    String address, {
+    LatLng? userLocation,
+  }) async {
+    try {
+      // Определяем город пользователя
+      String? userCity;
+      if (userLocation != null) {
+        userCity = await _getUserCity(userLocation);
+      }
+
+      // Добавляем город к адресу если его нет и город определен
+      String searchAddress = address;
+      if (userCity != null &&
+          !address.toLowerCase().contains(userCity.toLowerCase())) {
+        searchAddress = '$address, $userCity';
+      }
+
+      // Базовый URL с адресом
+      String urlString = 'https://maps.googleapis.com/maps/api/geocode/json'
+          '?address=${Uri.encodeComponent(searchAddress)}'
+          '&language=ru'
+          '&components=country:KZ'; // Ограничиваем поиск Казахстаном
+
+      // Добавляем location bias для поиска рядом с пользователем
+      if (userLocation != null) {
+        urlString += '&location=${userLocation.latitude},${userLocation.longitude}';
+      }
+
+      urlString += '&key=$_apiKey';
+
+      final url = Uri.parse(urlString);
+
+      debugPrint('🌍 Geocoding "$searchAddress" in Kazakhstan near ${userLocation?.latitude},${userLocation?.longitude}');
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
           final location = data['results'][0]['geometry']['location'];
-          return LatLng(location['lat'], location['lng']);
+          final foundAddress = data['results'][0]['formatted_address'];
+          final foundLocation = LatLng(location['lat'], location['lng']);
+
+          // Проверяем расстояние до найденной точки
+          if (userLocation != null) {
+            final distance = Geolocator.distanceBetween(
+              userLocation.latitude,
+              userLocation.longitude,
+              foundLocation.latitude,
+              foundLocation.longitude,
+            );
+
+            final distanceKm = (distance / 1000).toStringAsFixed(1);
+            debugPrint('📍 Found: $foundAddress ($distanceKm км)');
+
+            // Отклоняем результаты дальше 100 км
+            if (distance > 100000) {
+              debugPrint('❌ Место слишком далеко ($distanceKm км > 100 км)');
+              return null;
+            }
+          } else {
+            debugPrint('✅ Found: $foundAddress');
+          }
+
+          return foundLocation;
+        } else {
+          debugPrint('⚠️ Geocoding status: ${data['status']}');
         }
       }
 

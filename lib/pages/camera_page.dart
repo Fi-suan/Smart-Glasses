@@ -66,8 +66,11 @@ class _CameraPageState extends State<CameraPage> {
       });
 
       // Вибрация при обнаружении препятствий
-      if (description.contains('ОПАСНОСТЬ') || description.contains('ВНИМАНИЕ')) {
-        await _vibration.obstacleDetected(isDangerous: description.contains('ОПАСНОСТЬ'));
+      if (description.contains('ОПАСНОСТЬ!') || description.contains('ОПАСНОСТЬ')) {
+        await _vibration.sos(); // SOS паттерн для критической опасности
+        debugPrint('🚨 ОПАСНОСТЬ обнаружена! SOS вибрация');
+      } else if (description.contains('ВНИМАНИЕ')) {
+        await _vibration.obstacleDetected(isDangerous: false); // Предупреждение
       }
 
       // Озвучиваем результат

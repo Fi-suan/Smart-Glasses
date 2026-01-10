@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'services/cart_service.dart';
 import 'services/tts_service.dart';
 import 'services/auth_service.dart';
+import 'services/firebase_sync_service.dart';
 import 'pages/navigation_page.dart';
 import 'pages/camera_page.dart';
 import 'pages/store_page.dart';
@@ -19,22 +21,51 @@ void main() async {
     DeviceOrientation.portraitUp,
   ]);
 
+  // Инициализируем Firebase
+  bool firebaseInitialized = false;
+  try {
+    await Firebase.initializeApp();
+    firebaseInitialized = true;
+    debugPrint('✅ Firebase initialized');
+  } catch (e) {
+    debugPrint('⚠️ Firebase initialization error: $e');
+  }
+
   // Инициализируем TTS сервис
   final tts = TtsService();
   await tts.initialize();
 
-  runApp(SmartGlassesAccessibleApp(tts: tts));
+  // Инициализируем CartService
+  final cart = CartService();
+  if (firebaseInitialized) {
+    await cart.initialize();
+    debugPrint('✅ CartService initialized');
+  }
+
+  // Инициализируем синхронизацию Firebase (если залогинен и Firebase инициализирован)
+  if (firebaseInitialized) {
+    final firebaseSync = FirebaseSyncService();
+    if (firebaseSync.isAuthenticated) {
+      await firebaseSync.initializeSync();
+    }
+  }
+
+  runApp(SmartGlassesAccessibleApp(tts: tts, cart: cart));
 }
 
 class SmartGlassesAccessibleApp extends StatelessWidget {
   final TtsService tts;
+  final CartService cart;
 
-  const SmartGlassesAccessibleApp({super.key, required this.tts});
+  const SmartGlassesAccessibleApp({super.key, required this.tts, required this.cart});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => CartService(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: cart),
+        ChangeNotifierProvider(create: (_) => AuthService()),
+      ],
       child: MaterialApp(
         title: 'Smart Glasses для слепых',
         debugShowCheckedModeBanner: false,
@@ -65,18 +96,9 @@ class SmartGlassesAccessibleApp extends StatelessWidget {
             titleMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
         ),
-        home: FutureBuilder<bool>(
-          future: AuthService().isLoggedIn(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-
-            if (snapshot.data == true) {
+        home: Consumer<AuthService>(
+          builder: (context, auth, child) {
+            if (auth.isLoggedIn) {
               return MainNavigationPage(tts: tts);
             } else {
               return const LoginPage();

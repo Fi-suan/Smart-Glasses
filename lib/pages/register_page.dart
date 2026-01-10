@@ -68,14 +68,14 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     if (result.success) {
-      _vibration.buttonPress();
+      await _vibration.success(); // Тройная короткая для успешной регистрации
       _tts.speak(result.message);
 
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
     } else {
-      _vibration.error();
+      await _vibration.error(); // Двойная средняя для ошибки
       _tts.speak(result.message);
 
       if (mounted) {
@@ -174,8 +174,12 @@ class _RegisterPageState extends State<RegisterPage> {
                     if (value == null || value.isEmpty) {
                       return 'Введите email';
                     }
-                    if (!value.contains('@') || !value.contains('.')) {
-                      return 'Некорректный email';
+                    // Проверка формата email через регулярное выражение
+                    final emailRegex = RegExp(
+                      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                    );
+                    if (!emailRegex.hasMatch(value.trim())) {
+                      return 'Введите корректный email (например: name@gmail.com)';
                     }
                     return null;
                   },
@@ -186,18 +190,32 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Phone field (optional)
+                // Phone field (optional but validated if provided)
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
-                    labelText: 'Телефон (необязательно)',
+                    labelText: 'Телефон',
                     hintText: '+7 900 123 45 67',
                     prefixIcon: const Icon(Icons.phone),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    helperText: 'Формат: +7 XXX XXX XX XX',
                   ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Введите номер телефона';
+                    }
+                    // Убираем все пробелы и дефисы
+                    final cleanPhone = value.replaceAll(RegExp(r'[\s\-()]'), '');
+                    // Проверка формата телефона (+7XXXXXXXXXX или 8XXXXXXXXXX)
+                    final phoneRegex = RegExp(r'^(\+7|8)\d{10}$');
+                    if (!phoneRegex.hasMatch(cleanPhone)) {
+                      return 'Введите корректный номер (например: +7 900 123 45 67)';
+                    }
+                    return null;
+                  },
                   onTap: () {
                     _vibration.buttonPress();
                     _tts.speak("Поле телефон");
@@ -211,8 +229,9 @@ class _RegisterPageState extends State<RegisterPage> {
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     labelText: 'Пароль',
-                    hintText: 'Минимум 6 символов',
+                    hintText: 'Минимум 8 символов, буквы и цифры',
                     prefixIcon: const Icon(Icons.lock),
+                    helperText: 'Используйте буквы и цифры',
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -234,8 +253,16 @@ class _RegisterPageState extends State<RegisterPage> {
                     if (value == null || value.isEmpty) {
                       return 'Введите пароль';
                     }
-                    if (value.length < 6) {
-                      return 'Пароль должен быть минимум 6 символов';
+                    if (value.length < 8) {
+                      return 'Пароль должен быть минимум 8 символов';
+                    }
+                    // Проверка наличия хотя бы одной буквы
+                    if (!RegExp(r'[a-zA-Zа-яА-Я]').hasMatch(value)) {
+                      return 'Пароль должен содержать хотя бы одну букву';
+                    }
+                    // Проверка наличия хотя бы одной цифры
+                    if (!RegExp(r'\d').hasMatch(value)) {
+                      return 'Пароль должен содержать хотя бы одну цифру';
                     }
                     return null;
                   },

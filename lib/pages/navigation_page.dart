@@ -5,6 +5,8 @@ import '../services/tts_service.dart';
 import '../services/voice_command_service.dart';
 import '../services/directions_service.dart';
 import '../services/navigation_guidance_service.dart';
+import '../services/route_history_service.dart';
+import '../models/route_history_item.dart';
 
 class NavigationPage extends StatefulWidget {
   const NavigationPage({super.key});
@@ -18,6 +20,7 @@ class _NavigationPageState extends State<NavigationPage> {
   final VoiceCommandService _voice = VoiceCommandService();
   final DirectionsService _directions = DirectionsService();
   final NavigationGuidanceService _guidance = NavigationGuidanceService();
+  final RouteHistoryService _history = RouteHistoryService();
 
   GoogleMapController? _mapController;
   Position? _currentPosition;
@@ -96,15 +99,79 @@ class _NavigationPageState extends State<NavigationPage> {
   void _startVoiceNavigation() async {
     await _tts.speak("Слушаю. Скажите адрес назначения.");
 
+    // Начинаем запись
     await _voice.startListening(
-      onResult: (text) async {
-        setState(() {
-          _destinationAddress = text;
-        });
-        await _tts.speak("Строю маршрут до $text");
-        await _buildRoute(text);
-      },
+      onResult: (text) {}, // Не используется для Google STT
     );
+
+    // Показываем диалог с анимацией записи
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.red.shade50,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.mic,
+              size: 64,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Слушаю...',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Скажите куда вы хотите пойти',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            CircularProgressIndicator(
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Готово'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true) {
+      // Останавливаем запись и получаем результат
+      final text = await _voice.stopListening();
+
+      if (text != null && text.isNotEmpty) {
+        // Пытаемся извлечь адрес из команды
+        String? destination = _voice.extractDestination(text);
+
+        // Если не удалось извлечь из паттерна, используем весь текст
+        destination ??= text;
+
+        setState(() {
+          _destinationAddress = destination!;
+        });
+
+        await _tts.speak("Строю маршрут до $destination");
+        await _buildRoute(destination);
+      } else {
+        await _tts.speak("Не удалось распознать речь. Попробуйте снова.");
+      }
+    }
   }
 
   Future<void> _buildRoute(String destination) async {
@@ -151,10 +218,33 @@ class _NavigationPageState extends State<NavigationPage> {
       // Отображаем маршрут на карте
       _displayRouteOnMap(route);
 
+      // Сохраняем маршрут в историю
+      await _saveRouteToHistory(destination, route);
+
       // Начинаем голосовую навигацию
       await _guidance.startNavigation(route);
     } catch (e) {
       await _tts.speak("Произошла ошибка при построении маршрута");
+    }
+  }
+
+  Future<void> _saveRouteToHistory(String destination, DirectionsRoute route) async {
+    try {
+      final historyItem = RouteHistoryItem(
+        destination: destination,
+        destinationAddress: destination,
+        timestamp: DateTime.now(),
+        startLat: route.startLocation.latitude,
+        startLng: route.startLocation.longitude,
+        endLat: route.endLocation.latitude,
+        endLng: route.endLocation.longitude,
+        distance: route.totalDistance,
+        duration: route.totalDuration,
+      );
+
+      await _history.addRoute(historyItem);
+    } catch (e) {
+      debugPrint('Error saving route to history: $e');
     }
   }
 
@@ -238,37 +328,70 @@ class _NavigationPageState extends State<NavigationPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: Icon(_voice.isListening ? Icons.mic : Icons.mic_none),
-            onPressed: () {
-              _tts.announceButton("Голосовые команды");
-              _startVoiceNavigation();
-            },
-            tooltip: "Голосовые команды",
+          Semantics(
+            label: "История маршрутов",
+            button: true,
+            enabled: true,
+            child: IconButton(
+              icon: const Icon(Icons.history),
+              onPressed: () {
+                _tts.announceButton("История маршрутов");
+                _showRouteHistory();
+              },
+              tooltip: "История маршрутов",
+            ),
+          ),
+          Semantics(
+            label: "Ввести адрес текстом",
+            button: true,
+            enabled: true,
+            child: IconButton(
+              icon: const Icon(Icons.edit_location),
+              onPressed: () {
+                _tts.announceButton("Ввести адрес");
+                _showAddressInput();
+              },
+              tooltip: "Ввести адрес",
+            ),
+          ),
+          Semantics(
+            label: "Голосовые команды. Нажмите чтобы сказать куда идти",
+            button: true,
+            enabled: true,
+            child: IconButton(
+              icon: Icon(_voice.isListening ? Icons.mic : Icons.mic_none),
+              onPressed: () {
+                _tts.announceButton("Голосовые команды");
+                _startVoiceNavigation();
+              },
+              tooltip: "Голосовые команды",
+            ),
           ),
         ],
       ),
       body: Stack(
         children: [
-          // Карта
-          _currentPosition == null
-              ? const Center(child: CircularProgressIndicator())
-              : GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: LatLng(
-                      _currentPosition!.latitude,
-                      _currentPosition!.longitude,
+          // Карта (скрыта от screen reader - незрячие не видят карту)
+          ExcludeSemantics(
+            child: _currentPosition == null
+                ? const Center(child: CircularProgressIndicator())
+                : GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(
+                        _currentPosition!.latitude,
+                        _currentPosition!.longitude,
+                      ),
+                      zoom: 16,
                     ),
-                    zoom: 16,
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: true,
+                    polylines: _polylines,
+                    markers: _markers,
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                    },
                   ),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  polylines: _polylines,
-                  markers: _markers,
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                  },
-                ),
+          ),
 
           // Панель управления
           Positioned(
@@ -296,50 +419,58 @@ class _NavigationPageState extends State<NavigationPage> {
                   if (_isNavigating) ...[
                     // Текущая инструкция
                     if (_currentInstruction.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.blue.shade200,
-                            width: 2,
+                      Semantics(
+                        label: "Текущая инструкция: $_currentInstruction. ${_distanceToNextStep > 0 ? 'Расстояние ${_distanceToNextStep.toStringAsFixed(0)} метров' : ''}",
+                        liveRegion: true, // Обновляется в реальном времени
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.blue.shade200,
+                              width: 2,
+                            ),
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.directions,
-                              color: Colors.blue.shade700,
-                              size: 32,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _currentInstruction,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue.shade900,
-                                    ),
-                                  ),
-                                  if (_distanceToNextStep > 0) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Расстояние: ${_distanceToNextStep.toStringAsFixed(0)} м',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                          child: Row(
+                            children: [
+                              ExcludeSemantics(
+                                child: Icon(
+                                  Icons.directions,
+                                  color: Colors.blue.shade700,
+                                  size: 32,
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ExcludeSemantics(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _currentInstruction,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade900,
+                                        ),
+                                      ),
+                                      if (_distanceToNextStep > 0) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Расстояние: ${_distanceToNextStep.toStringAsFixed(0)} м',
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     const SizedBox(height: 12),
@@ -400,79 +531,331 @@ class _NavigationPageState extends State<NavigationPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _tts.announceButton("Повторить инструкцию");
-                              _guidance.repeatCurrentInstruction();
-                            },
-                            icon: const Icon(Icons.replay),
-                            label: const Text('Повторить'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: Semantics(
+                            label: "Повторить текущую инструкцию",
+                            hint: "Двойное нажатие повторит навигационную инструкцию",
+                            button: true,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                _tts.announceButton("Повторить инструкцию");
+                                _guidance.repeatCurrentInstruction();
+                              },
+                              icon: const Icon(Icons.replay),
+                              label: const Text('Повторить'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _tts.announceButton("Остановить навигацию");
-                              _stopNavigation();
-                            },
-                            icon: const Icon(Icons.stop),
-                            label: const Text('Остановить'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: Semantics(
+                            label: "Остановить навигацию",
+                            hint: "Двойное нажатие остановит текущий маршрут",
+                            button: true,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                _tts.announceButton("Остановить навигацию");
+                                _stopNavigation();
+                              },
+                              icon: const Icon(Icons.stop),
+                              label: const Text('Остановить'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
                   ] else ...[
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        _tts.announceButton("Начать навигацию");
-                        _startVoiceNavigation();
-                      },
-                      icon: const Icon(Icons.mic, size: 28),
-                      label: const Text(
-                        'Сказать куда идти',
-                        style: TextStyle(fontSize: 18),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 20,
+                    Semantics(
+                      label: "Начать навигацию. Сказать куда идти",
+                      hint: "Двойное нажатие активирует голосовой ввод адреса",
+                      button: true,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          _tts.announceButton("Начать навигацию");
+                          _startVoiceNavigation();
+                        },
+                        icon: const Icon(Icons.mic, size: 28),
+                        label: const Text(
+                          'Сказать куда идти',
+                          style: TextStyle(fontSize: 18),
                         ),
-                        minimumSize: const Size(double.infinity, 60),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 20,
+                          ),
+                          minimumSize: const Size(double.infinity, 60),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        _tts.announceButton("Открыть камеру");
-                        Navigator.pushNamed(context, '/camera');
-                      },
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Что впереди?'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 16,
+                    Semantics(
+                      label: "Что впереди? Открыть AI камеру",
+                      hint: "Двойное нажатие откроет камеру для анализа препятствий",
+                      button: true,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          _tts.announceButton("Открыть камеру");
+                          Navigator.pushNamed(context, '/camera');
+                        },
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Что впереди?'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 16,
+                          ),
+                          minimumSize: const Size(double.infinity, 54),
                         ),
-                        minimumSize: const Size(double.infinity, 54),
                       ),
                     ),
                   ],
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRouteHistory() async {
+    final history = await _history.getRecentRoutes(limit: 20);
+
+    if (!mounted) return;
+
+    if (history.isEmpty) {
+      _tts.speak("История маршрутов пуста");
+      return;
+    }
+
+    _tts.speak("История маршрутов. ${history.length} маршрутов");
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Заголовок
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.history, size: 28),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'История маршрутов',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _tts.announceButton("Закрыть");
+                      Navigator.pop(context);
+                    },
+                    tooltip: "Закрыть",
+                  ),
+                ],
+              ),
+            ),
+
+            // Список маршрутов
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: history.length,
+                padding: const EdgeInsets.all(16),
+                itemBuilder: (context, index) {
+                  final item = history[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: InkWell(
+                      onTap: () {
+                        _tts.speak("Повторить маршрут до ${item.destination}");
+                        Navigator.pop(context);
+                        _buildRoute(item.destination);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.place,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.destination,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        item.formattedDate,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (item.distance != null || item.duration != null) ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  if (item.distance != null) ...[
+                                    Icon(
+                                      Icons.straighten,
+                                      size: 16,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      item.distance!,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                  ],
+                                  if (item.duration != null) ...[
+                                    Icon(
+                                      Icons.access_time,
+                                      size: 16,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      item.duration!,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Кнопка очистки истории
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  _tts.announceButton("Очистить историю");
+                  await _history.clearHistory();
+                  Navigator.pop(context);
+                  _tts.speak("История маршрутов очищена");
+                },
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Очистить историю'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddressInput() {
+    final TextEditingController addressController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Введите адрес'),
+        content: TextField(
+          controller: addressController,
+          decoration: const InputDecoration(
+            labelText: 'Куда вы хотите пойти?',
+            hintText: 'Например: Красная площадь, Москва',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          onSubmitted: (value) {
+            if (value.isNotEmpty) {
+              Navigator.pop(context);
+              _tts.speak("Строю маршрут до $value");
+              _buildRoute(value);
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _tts.announceButton("Отмена");
+              Navigator.pop(context);
+            },
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final address = addressController.text;
+              if (address.isNotEmpty) {
+                Navigator.pop(context);
+                _tts.speak("Строю маршрут до $address");
+                _buildRoute(address);
+              } else {
+                _tts.speak("Введите адрес");
+              }
+            },
+            child: const Text('Построить маршрут'),
           ),
         ],
       ),

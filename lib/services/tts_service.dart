@@ -79,6 +79,33 @@ class TtsService {
     debugPrint("TTS enabled: $enabled");
   }
 
+  Future<void> setSpeechRate(double rate) async {
+    try {
+      await _flutterTts.setSpeechRate(rate);
+      debugPrint("TTS speech rate set to: $rate");
+    } catch (e) {
+      debugPrint("TTS setSpeechRate error: $e");
+    }
+  }
+
+  Future<void> setVolume(double volume) async {
+    try {
+      await _flutterTts.setVolume(volume);
+      debugPrint("TTS volume set to: $volume");
+    } catch (e) {
+      debugPrint("TTS setVolume error: $e");
+    }
+  }
+
+  Future<void> setPitch(double pitch) async {
+    try {
+      await _flutterTts.setPitch(pitch);
+      debugPrint("TTS pitch set to: $pitch");
+    } catch (e) {
+      debugPrint("TTS setPitch error: $e");
+    }
+  }
+
   bool get isEnabled => _isEnabled;
 
   // Удобные методы для стандартных фраз

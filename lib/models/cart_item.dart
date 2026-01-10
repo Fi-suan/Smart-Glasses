@@ -9,5 +9,21 @@ class CartItem {
     this.quantity = 1,
   });
 
-  int get totalPrice => product.price * quantity;
+  double get totalPrice => product.price * quantity;
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'product': product.toJson(),
+      'quantity': quantity,
+    };
+  }
+
+  // Create from JSON
+  factory CartItem.fromJson(Map<String, dynamic> json) {
+    return CartItem(
+      product: Product.fromJson(json['product'] as Map<String, dynamic>),
+      quantity: json['quantity'] as int,
+    );
+  }
 }

@@ -59,14 +59,14 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     if (result.success) {
-      _vibration.buttonPress();
+      await _vibration.success(); // Тройная короткая для успешного входа
       _tts.speak(result.message);
 
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
     } else {
-      _vibration.error();
+      await _vibration.error(); // Двойная средняя для ошибки
       _tts.speak(result.message);
 
       if (mounted) {
@@ -93,21 +93,14 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo/Icon
-                  Icon(
-                    Icons.visibility,
-                    size: 80,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(height: 16),
-
                   // Title
                   const Text(
                     'Smart Glasses',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 32,
+                      fontSize: 36,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -137,8 +130,12 @@ class _LoginPageState extends State<LoginPage> {
                       if (value == null || value.isEmpty) {
                         return 'Введите email';
                       }
-                      if (!value.contains('@')) {
-                        return 'Некорректный email';
+                      // Проверка формата email через регулярное выражение
+                      final emailRegex = RegExp(
+                        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                      );
+                      if (!emailRegex.hasMatch(value.trim())) {
+                        return 'Введите корректный email';
                       }
                       return null;
                     },

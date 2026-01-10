@@ -1,26 +1,63 @@
+// Категории товаров
+enum ProductCategory {
+  glasses,     // Умные очки
+  canes,       // Трости
+  bracelets,   // Браслеты и носимые устройства
+  audiobooks,  // Аудиокниги и подписки
+  accessories, // Аксессуары
+}
+
+extension ProductCategoryExtension on ProductCategory {
+  String get displayName {
+    switch (this) {
+      case ProductCategory.glasses:
+        return 'Умные очки';
+      case ProductCategory.canes:
+        return 'Трости';
+      case ProductCategory.bracelets:
+        return 'Браслеты';
+      case ProductCategory.audiobooks:
+        return 'Аудиокниги';
+      case ProductCategory.accessories:
+        return 'Аксессуары';
+    }
+  }
+
+  String get icon {
+    switch (this) {
+      case ProductCategory.glasses:
+        return 'visibility';
+      case ProductCategory.canes:
+        return 'accessibility_new';
+      case ProductCategory.bracelets:
+        return 'watch';
+      case ProductCategory.audiobooks:
+        return 'headset';
+      case ProductCategory.accessories:
+        return 'shopping_bag';
+    }
+  }
+}
+
 class Product {
   final String id;
   final String name;
-  final String category;
-  final int price;
   final String description;
-  final String imageIcon; // For backward compatibility
-  final String? imageUrl;
-  final String? thumbnailUrl;
+  final double price;
+  final ProductCategory category;
+  final String imageUrl;
+  final List<String> features;
   final bool isAvailable;
-  final List<String>? features;
 
   Product({
     required this.id,
     required this.name,
-    required this.category,
-    required this.price,
     required this.description,
-    this.imageIcon = 'shopping_bag',
-    this.imageUrl,
-    this.thumbnailUrl,
+    required this.price,
+    required this.category,
+    required this.imageUrl,
+    this.features = const [],
     this.isAvailable = true,
-    this.features,
   });
 
   // Factory constructor for creating a Product from JSON
@@ -28,16 +65,17 @@ class Product {
     return Product(
       id: json['id'] as String,
       name: json['name'] as String,
-      category: json['category'] as String,
-      price: json['price'] as int,
       description: json['description'] as String,
-      imageIcon: _getCategoryIcon(json['category'] as String),
-      imageUrl: json['image_url'] as String?,
-      thumbnailUrl: json['thumbnail_url'] as String?,
-      isAvailable: json['is_available'] as bool? ?? true,
+      price: (json['price'] as num).toDouble(),
+      category: ProductCategory.values.firstWhere(
+        (e) => e.toString().split('.').last == json['category'],
+        orElse: () => ProductCategory.accessories,
+      ),
+      imageUrl: json['imageUrl'] as String? ?? '',
       features: (json['features'] as List<dynamic>?)
           ?.map((e) => e as String)
-          .toList(),
+          .toList() ?? [],
+      isAvailable: json['isAvailable'] as bool? ?? true,
     );
   }
 
@@ -46,78 +84,20 @@ class Product {
     return {
       'id': id,
       'name': name,
-      'category': category,
-      'price': price,
       'description': description,
-      'image_url': imageUrl,
-      'thumbnail_url': thumbnailUrl,
-      'is_available': isAvailable,
+      'price': price,
+      'category': category.toString().split('.').last,
+      'imageUrl': imageUrl,
       'features': features,
+      'isAvailable': isAvailable,
     };
   }
 
-  static String _getCategoryIcon(String category) {
-    switch (category) {
-      case 'Очки':
-        return 'visibility';
-      case 'Трости':
-        return 'accessibility_new';
-      case 'Часы':
-        return 'watch';
-      default:
-        return 'shopping_bag';
-    }
+  // Formatted price with currency
+  String get formattedPrice {
+    return '${price.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]} ',
+    )} ₸';
   }
 }
-
-// Mock data
-final List<Product> mockProducts = [
-  Product(
-    id: '1',
-    name: 'Умные очки Pro',
-    category: 'Очки',
-    price: 45000,
-    description: 'Профессиональные умные очки с HD дисплеем, камерой 12MP и голосовым ассистентом. Время работы до 8 часов.',
-    imageIcon: 'visibility',
-  ),
-  Product(
-    id: '2',
-    name: 'Умная трость GPS',
-    category: 'Трости',
-    price: 12000,
-    description: 'Трость с GPS навигацией, датчиками препятствий и голосовыми подсказками. Водонепроницаемая.',
-    imageIcon: 'accessibility_new',
-  ),
-  Product(
-    id: '3',
-    name: 'Умные часы Health',
-    category: 'Часы',
-    price: 25000,
-    description: 'Часы с мониторингом здоровья, пульсометром, шагомером и уведомлениями. Автономность 7 дней.',
-    imageIcon: 'watch',
-  ),
-  Product(
-    id: '4',
-    name: 'Очки AR Vision',
-    category: 'Очки',
-    price: 55000,
-    description: 'AR очки с дополненной реальностью, навигацией и переводчиком в реальном времени. Premium качество.',
-    imageIcon: 'remove_red_eye',
-  ),
-  Product(
-    id: '5',
-    name: 'Умная трость Lite',
-    category: 'Трости',
-    price: 8000,
-    description: 'Облегченная трость с базовыми датчиками и вибрацией при обнаружении препятствий.',
-    imageIcon: 'accessibility',
-  ),
-  Product(
-    id: '6',
-    name: 'Часы Sport Pro',
-    category: 'Часы',
-    price: 35000,
-    description: 'Спортивные часы с GPS, водостойкостью 50м и множеством режимов тренировок.',
-    imageIcon: 'fitness_center',
-  ),
-];

@@ -124,10 +124,10 @@ class ApiCartItem {
       product: Product(
         id: product.id,
         name: product.name,
-        category: '', // Not provided by API cart item
-        price: product.price,
+        category: ProductCategory.accessories, // Default category for API cart items
+        price: product.price.toDouble(),
         description: '',
-        imageUrl: product.imageUrl,
+        imageUrl: product.imageUrl ?? '',
       ),
       quantity: quantity,
     );

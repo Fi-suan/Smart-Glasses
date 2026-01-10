@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/tts_service.dart';
 import '../services/vibration_service.dart';
+import '../services/firebase_sync_service.dart';
+import '../services/auth_service.dart';
+import '../features/device/data/datasources/ble_datasource.dart';
+import '../features/device/data/models/smart_device_model.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -13,6 +17,8 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final TtsService _tts = TtsService();
   final VibrationService _vibration = VibrationService();
+  final BleDataSource _bleDataSource = BleDataSourceImpl();
+  FirebaseSyncService? _firebaseSync;
 
   // Настройки
   bool _ttsEnabled = true;
@@ -21,27 +27,48 @@ class _SettingsPageState extends State<SettingsPage> {
   double _pitch = 1.0;
   bool _vibrationEnabled = true;
   String _userName = 'Гость';
+  String _userEmail = '';
   bool _isBluetoothConnected = false;
+  String _connectedDeviceName = '';
+  String? _connectedDeviceId;
+  int _autoScanPeriod = 5; // Период авто-сканирования в секундах
 
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _initFirebase();
     _loadSettings();
     _tts.speak("Настройки приложения");
+  }
+
+  Future<void> _initFirebase() async {
+    try {
+      _firebaseSync = FirebaseSyncService();
+      debugPrint('✅ FirebaseSync initialized in settings');
+    } catch (e) {
+      debugPrint('⚠️ FirebaseSync not available: $e');
+      _firebaseSync = null;
+    }
   }
 
   Future<void> _loadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // Загружаем данные пользователя из AuthService
+      final userData = await AuthService().getCurrentUser();
+
       setState(() {
         _ttsEnabled = prefs.getBool('tts_enabled') ?? true;
         _speechRate = prefs.getDouble('speech_rate') ?? 0.45;
         _volume = prefs.getDouble('volume') ?? 1.0;
         _pitch = prefs.getDouble('pitch') ?? 1.0;
         _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
-        _userName = prefs.getString('user_name') ?? 'Гость';
+        _userName = userData['name'] ?? 'Гость';
+        _userEmail = userData['email'] ?? '';
+        _autoScanPeriod = prefs.getInt('auto_scan_period') ?? 5;
         _isLoading = false;
       });
 
@@ -63,11 +90,29 @@ class _SettingsPageState extends State<SettingsPage> {
       await prefs.setDouble('pitch', _pitch);
       await prefs.setBool('vibration_enabled', _vibrationEnabled);
       await prefs.setString('user_name', _userName);
+      await prefs.setInt('auto_scan_period', _autoScanPeriod);
 
-      _vibration.buttonPress();
+      // Синхронизация с Firebase (если доступен)
+      if (_firebaseSync != null) {
+        try {
+          await _firebaseSync!.saveSettings(
+            ttsEnabled: _ttsEnabled,
+            speechRate: _speechRate,
+            volume: _volume,
+            pitch: _pitch,
+            vibrationEnabled: _vibrationEnabled,
+            userName: _userName,
+          );
+        } catch (e) {
+          debugPrint('⚠️ Firebase sync error: $e');
+        }
+      }
+
+      await _vibration.success();
       _tts.speak("Настройки сохранены");
     } catch (e) {
       debugPrint("Error saving settings: $e");
+      await _vibration.error();
       _tts.speak("Ошибка сохранения настроек");
     }
   }
@@ -114,11 +159,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                subtitle: const Text('Нажмите чтобы изменить имя'),
+                subtitle: Text(
+                  _userEmail.isNotEmpty ? _userEmail : 'Email не указан',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
                 onTap: () {
                   _vibration.buttonPress();
-                  _tts.announceButton("Изменить имя");
-                  _showEditNameDialog();
+                  _tts.speak("Профиль: $_userName. Email: ${_userEmail.isNotEmpty ? _userEmail : 'не указан'}");
                 },
               ),
             ],
@@ -166,6 +216,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   setState(() {
                     _speechRate = value;
                   });
+                  _tts.setSpeechRate(value); // Применяем сразу
                 },
                 onChangeEnd: (value) {
                   _tts.speak("Новая скорость");
@@ -191,6 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   setState(() {
                     _volume = value;
                   });
+                  _tts.setVolume(value); // Применяем сразу
                 },
                 onChangeEnd: (value) {
                   _tts.speak("Новая громкость");
@@ -216,6 +268,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   setState(() {
                     _pitch = value;
                   });
+                  _tts.setPitch(value); // Применяем сразу
                 },
                 onChangeEnd: (value) {
                   _tts.speak("Новая высота голоса");
@@ -250,6 +303,37 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 24),
 
+          // Авто-сканирование препятствий
+          _buildSection(
+            title: 'Авто-сканирование',
+            icon: Icons.camera_alt,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('Период сканирования'),
+                subtitle: Text('$_autoScanPeriod секунд'),
+                onTap: () {
+                  _vibration.buttonPress();
+                  _tts.speak("Период сканирования $_autoScanPeriod секунд");
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildPeriodButton(3),
+                    _buildPeriodButton(5),
+                    _buildPeriodButton(10),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
           // Bluetooth подключение
           _buildSection(
             title: 'Умные очки',
@@ -263,15 +347,24 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: Text(_isBluetoothConnected ? 'Подключено' : 'Не подключено'),
                 subtitle: Text(
                   _isBluetoothConnected
-                      ? 'SmartGlasses Pro'
+                      ? _connectedDeviceName.isEmpty ? 'Устройство' : _connectedDeviceName
                       : 'Нажмите для подключения',
                 ),
                 trailing: _isBluetoothConnected
                     ? IconButton(
                         icon: const Icon(Icons.close),
-                        onPressed: () {
+                        onPressed: () async {
+                          if (_connectedDeviceId != null) {
+                            try {
+                              await _bleDataSource.disconnectDevice(_connectedDeviceId!);
+                            } catch (e) {
+                              debugPrint('Error disconnecting: $e');
+                            }
+                          }
                           setState(() {
                             _isBluetoothConnected = false;
+                            _connectedDeviceId = null;
+                            _connectedDeviceName = '';
                           });
                           _vibration.buttonPress();
                           _tts.speak("Bluetooth отключен");
@@ -379,6 +472,42 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildPeriodButton(int seconds) {
+    final isSelected = _autoScanPeriod == seconds;
+
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ElevatedButton(
+          onPressed: () {
+            setState(() {
+              _autoScanPeriod = seconds;
+            });
+            _vibration.buttonPress();
+            _tts.speak("Период $seconds секунд");
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Colors.grey.shade300,
+            foregroundColor: isSelected ? Colors.white : Colors.black87,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: Text(
+            '$seconds сек',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showEditNameDialog() {
     final controller = TextEditingController(text: _userName);
 
@@ -422,56 +551,21 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showBluetoothDialog() {
-    _tts.speak("Доступные устройства: SmartGlasses Pro, SmartGlasses Lite");
+    _tts.speak("Поиск устройств");
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Подключение Bluetooth'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            const Text('Поиск устройств...'),
-            const SizedBox(height: 24),
-            ListTile(
-              leading: const Icon(Icons.bluetooth),
-              title: const Text('SmartGlasses Pro'),
-              subtitle: const Text('Поблизости'),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                setState(() {
-                  _isBluetoothConnected = true;
-                });
-                Navigator.pop(context);
-                _vibration.buttonPress();
-                _tts.speak("Подключено к SmartGlasses Pro");
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bluetooth),
-              title: const Text('SmartGlasses Lite'),
-              subtitle: const Text('Слабый сигнал'),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                Navigator.pop(context);
-                _vibration.buttonPress();
-                _tts.speak("Подключение не удалось. Устройство слишком далеко.");
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _vibration.buttonPress();
-              _tts.announceButton("Отмена");
-              Navigator.pop(context);
-            },
-            child: const Text('Отмена'),
-          ),
-        ],
+      builder: (context) => _BluetoothScanDialog(
+        bleDataSource: _bleDataSource,
+        tts: _tts,
+        vibration: _vibration,
+        onDeviceConnected: (deviceId, deviceName) {
+          setState(() {
+            _isBluetoothConnected = true;
+            _connectedDeviceId = deviceId;
+            _connectedDeviceName = deviceName;
+          });
+        },
       ),
     );
   }
@@ -494,12 +588,17 @@ class _SettingsPageState extends State<SettingsPage> {
             child: const Text('Отмена'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
               _vibration.buttonPress();
               _tts.speak("Выход выполнен");
-              // TODO: Implement actual logout with Firebase Auth
-              Navigator.of(context).pushReplacementNamed('/login');
+
+              // Реальный выход из Firebase Auth
+              await AuthService().logout();
+
+              if (mounted) {
+                Navigator.of(context).pushReplacementNamed('/login');
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -510,5 +609,184 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+}
+
+// Виджет для сканирования и подключения BLE устройств
+class _BluetoothScanDialog extends StatefulWidget {
+  final BleDataSource bleDataSource;
+  final TtsService tts;
+  final VibrationService vibration;
+  final Function(String deviceId, String deviceName) onDeviceConnected;
+
+  const _BluetoothScanDialog({
+    required this.bleDataSource,
+    required this.tts,
+    required this.vibration,
+    required this.onDeviceConnected,
+  });
+
+  @override
+  State<_BluetoothScanDialog> createState() => _BluetoothScanDialogState();
+}
+
+class _BluetoothScanDialogState extends State<_BluetoothScanDialog> {
+  List<SmartDeviceModel> _devices = [];
+  bool _isScanning = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _startScan();
+  }
+
+  Future<void> _startScan() async {
+    setState(() {
+      _isScanning = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await for (final devices in widget.bleDataSource.scanForDevices()) {
+        if (mounted) {
+          setState(() {
+            _devices = devices;
+          });
+
+          if (devices.isNotEmpty) {
+            final deviceNames = devices.map((d) => d.name).join(', ');
+            widget.tts.speak("Доступные устройства: $deviceNames");
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+        });
+
+        if (e.toString().contains('Bluetooth is turned off')) {
+          widget.tts.speak("Bluetooth отключен");
+        } else if (e.toString().contains('permissions')) {
+          widget.tts.speak("Необходимы разрешения Bluetooth");
+        } else {
+          widget.tts.speak("Ошибка поиска устройств");
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _connectToDevice(SmartDeviceModel device) async {
+    widget.vibration.buttonPress();
+    widget.tts.speak("Подключение к ${device.name}");
+
+    try {
+      final connectedDevice = await widget.bleDataSource.connectToDevice(device.id);
+
+      if (mounted) {
+        Navigator.pop(context);
+        await widget.vibration.confirmation();
+        widget.tts.speak("Подключено к ${connectedDevice.name}");
+        widget.onDeviceConnected(device.id, device.name);
+      }
+    } catch (e) {
+      if (mounted) {
+        await widget.vibration.error();
+        widget.tts.speak("Не удалось подключиться. ${e.toString()}");
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка подключения: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Подключение Bluetooth'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isScanning) ...[
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Поиск устройств...'),
+            ],
+            if (_errorMessage != null) ...[
+              Icon(Icons.error, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                _getErrorMessage(_errorMessage!),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+            if (_devices.isEmpty && !_isScanning && _errorMessage == null) ...[
+              const Icon(Icons.bluetooth_disabled, size: 48, color: Colors.grey),
+              const SizedBox(height: 16),
+              const Text('Устройства не найдены'),
+            ],
+            if (_devices.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _devices.length,
+                  itemBuilder: (context, index) {
+                    final device = _devices[index];
+                    return ListTile(
+                      leading: const Icon(Icons.bluetooth),
+                      title: Text(device.name),
+                      subtitle: Text('RSSI: ${device.rssi} dBm'),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () => _connectToDevice(device),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            widget.vibration.buttonPress();
+            widget.tts.announceButton("Отмена");
+            Navigator.pop(context);
+          },
+          child: const Text('Отмена'),
+        ),
+        if (_errorMessage != null || (_devices.isEmpty && !_isScanning))
+          TextButton(
+            onPressed: _startScan,
+            child: const Text('Повторить'),
+          ),
+      ],
+    );
+  }
+
+  String _getErrorMessage(String error) {
+    if (error.contains('Bluetooth is turned off')) {
+      return 'Включите Bluetooth в настройках устройства';
+    } else if (error.contains('permissions')) {
+      return 'Необходимы разрешения Bluetooth.\nПредоставьте их в настройках приложения.';
+    } else if (error.contains('not supported')) {
+      return 'Bluetooth не поддерживается на этом устройстве';
+    }
+    return 'Ошибка: $error';
   }
 }

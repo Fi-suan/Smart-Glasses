@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat flutter:V *:S -t 200)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 shell am force-stop com.example.smartglasses_app)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 shell am start -n com.example.smartglasses_app/.MainActivity)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 install -r build/app/outputs/flutter-apk/app-debug.apk)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -d -s flutter:V)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -v time -s flutter:I)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -d -s \"flutter:I\")",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 shell \"ps | grep smartglasses\")",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -d)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -d \"*:E\")",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -c)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -s flutter:V)",
+      "Bash(flutter analyze:*)",
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -v time -s \"flutter:I\" \"*:E\")"
+    ]
+  }
+}
