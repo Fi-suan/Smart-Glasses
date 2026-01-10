@@ -6,6 +6,7 @@ import 'services/cart_service.dart';
 import 'services/tts_service.dart';
 import 'services/auth_service.dart';
 import 'services/firebase_sync_service.dart';
+import 'services/push_notification_service.dart';
 import 'pages/navigation_page.dart';
 import 'pages/camera_page.dart';
 import 'pages/store_page.dart';
@@ -48,6 +49,13 @@ void main() async {
     if (firebaseSync.isAuthenticated) {
       await firebaseSync.initializeSync();
     }
+  }
+
+  // Инициализируем push-уведомления
+  if (firebaseInitialized) {
+    final pushService = PushNotificationService();
+    await pushService.initialize();
+    debugPrint('✅ Push notifications initialized');
   }
 
   runApp(SmartGlassesAccessibleApp(tts: tts, cart: cart));
