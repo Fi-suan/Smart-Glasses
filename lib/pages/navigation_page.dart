@@ -6,6 +6,7 @@ import '../services/voice_command_service.dart';
 import '../services/directions_service.dart';
 import '../services/navigation_guidance_service.dart';
 import '../services/route_history_service.dart';
+import '../services/ai_navigation_service.dart';
 import '../models/route_history_item.dart';
 
 class NavigationPage extends StatefulWidget {
@@ -21,6 +22,7 @@ class _NavigationPageState extends State<NavigationPage> {
   final DirectionsService _directions = DirectionsService();
   final NavigationGuidanceService _guidance = NavigationGuidanceService();
   final RouteHistoryService _history = RouteHistoryService();
+  final AiNavigationService _aiNavigation = AiNavigationService();
 
   GoogleMapController? _mapController;
   Position? _currentPosition;
@@ -97,7 +99,7 @@ class _NavigationPageState extends State<NavigationPage> {
   }
 
   void _startVoiceNavigation() async {
-    await _tts.speak("Слушаю. Скажите адрес назначения.");
+    await _tts.speak("Слушаю. Скажите куда хотите пойти. Например: ближайшая аптека, или магазин одежды.");
 
     // Начинаем запись
     await _voice.startListening(
@@ -109,42 +111,73 @@ class _NavigationPageState extends State<NavigationPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.red.shade50,
+        backgroundColor: Colors.blue.shade50,
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.mic,
-              size: 64,
-              color: Colors.red,
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.mic,
+                size: 64,
+                color: Colors.blue.shade700,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             const Text(
               'Слушаю...',
               style: TextStyle(
-                fontSize: 20,
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
+            const SizedBox(height: 12),
+            Text(
               'Скажите куда вы хотите пойти',
               textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            CircularProgressIndicator(
-              color: Colors.red,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade700,
               ),
-              child: const Text('Готово'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Например: "ближайшая аптека"\nили "где поесть?"',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade500,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: CircularProgressIndicator(
+                color: Colors.blue.shade700,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop(true);
+                },
+                icon: const Icon(Icons.check),
+                label: const Text('Готово'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
             ),
           ],
         ),
@@ -156,31 +189,56 @@ class _NavigationPageState extends State<NavigationPage> {
       final text = await _voice.stopListening();
 
       if (text != null && text.isNotEmpty) {
-        // Пытаемся извлечь адрес из команды
-        String? destination = _voice.extractDestination(text);
-
-        // Если не удалось извлечь из паттерна, используем весь текст
-        destination ??= text;
+        debugPrint('🎤 Voice input: $text');
 
         setState(() {
-          _destinationAddress = destination!;
+          _destinationAddress = text;
         });
 
-        await _tts.speak("Строю маршрут до $destination");
-        await _buildRoute(destination);
+        // Передаём весь текст в AI навигацию - она сама разберётся
+        await _buildRoute(text);
       } else {
         await _tts.speak("Не удалось распознать речь. Попробуйте снова.");
       }
     }
   }
 
-  Future<void> _buildRoute(String destination) async {
+  Future<void> _buildRoute(String userQuery) async {
     try {
       if (_currentPosition == null) {
         await _tts.speak("Не удалось определить ваше местоположение");
         return;
       }
 
+      // Показываем индикатор загрузки
+      setState(() {
+        _currentInstruction = "Ищу место...";
+      });
+
+      await _tts.speak("Ищу $userQuery");
+
+      // Используем AI для поиска места
+      final foundPlace = await _aiNavigation.processNavigationRequest(userQuery);
+
+      if (foundPlace == null) {
+        final notFoundResponse = _aiNavigation.generateNotFoundResponse(userQuery);
+        await _tts.speak(notFoundResponse);
+        setState(() {
+          _currentInstruction = "";
+        });
+        return;
+      }
+
+      // Озвучиваем найденное место
+      final voiceResponse = _aiNavigation.generateVoiceResponse(foundPlace);
+      await _tts.speak(voiceResponse);
+
+      setState(() {
+        _destinationAddress = foundPlace.name;
+        _currentInstruction = "Строю маршрут до ${foundPlace.name}...";
+      });
+
+      // Строим маршрут до найденного места
       final origin = LatLng(
         _currentPosition!.latitude,
         _currentPosition!.longitude,
@@ -188,25 +246,20 @@ class _NavigationPageState extends State<NavigationPage> {
 
       DirectionsRoute? route;
 
-      // Проверяем наличие API ключа
       if (_directions.hasApiKey) {
-        // Используем реальный API
-        route = await _directions.getDirectionsFromCurrentLocation(
-          destinationAddress: destination,
+        route = await _directions.getDirections(
+          origin: origin,
+          destination: foundPlace.location,
         );
       } else {
-        // Используем mock маршрут для тестирования
-        await _tts.speak("Используется тестовый режим без Google API");
-        // Создаем произвольную точку назначения рядом
-        final mockDestination = LatLng(
-          origin.latitude + 0.01,
-          origin.longitude + 0.01,
-        );
-        route = await _directions.getMockRoute(origin, mockDestination);
+        route = await _directions.getMockRoute(origin, foundPlace.location);
       }
 
       if (route == null) {
         await _tts.speak("Не удалось построить маршрут");
+        setState(() {
+          _currentInstruction = "";
+        });
         return;
       }
 
@@ -218,14 +271,37 @@ class _NavigationPageState extends State<NavigationPage> {
       // Отображаем маршрут на карте
       _displayRouteOnMap(route);
 
+      // Добавляем маркер найденного места
+      _addFoundPlaceMarker(foundPlace);
+
       // Сохраняем маршрут в историю
-      await _saveRouteToHistory(destination, route);
+      await _saveRouteToHistory(foundPlace.name, route);
 
       // Начинаем голосовую навигацию
       await _guidance.startNavigation(route);
     } catch (e) {
+      debugPrint('Error building route: $e');
       await _tts.speak("Произошла ошибка при построении маршрута");
+      setState(() {
+        _currentInstruction = "";
+      });
     }
+  }
+
+  void _addFoundPlaceMarker(FoundPlace place) {
+    final marker = Marker(
+      markerId: const MarkerId('destination'),
+      position: place.location,
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+      infoWindow: InfoWindow(
+        title: place.name,
+        snippet: place.distanceText,
+      ),
+    );
+
+    setState(() {
+      _markers.add(marker);
+    });
   }
 
   Future<void> _saveRouteToHistory(String destination, DirectionsRoute route) async {
@@ -819,22 +895,49 @@ class _NavigationPageState extends State<NavigationPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Введите адрес'),
-        content: TextField(
-          controller: addressController,
-          decoration: const InputDecoration(
-            labelText: 'Куда вы хотите пойти?',
-            hintText: 'Например: Красная площадь, Москва',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-          onSubmitted: (value) {
-            if (value.isNotEmpty) {
-              Navigator.pop(context);
-              _tts.speak("Строю маршрут до $value");
-              _buildRoute(value);
-            }
-          },
+        title: const Text('Куда вы хотите пойти?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: addressController,
+              decoration: const InputDecoration(
+                labelText: 'Введите запрос',
+                hintText: 'Например: ближайшая аптека',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+              onSubmitted: (value) {
+                if (value.isNotEmpty) {
+                  Navigator.pop(context);
+                  _buildRoute(value);
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Примеры запросов:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildSuggestionChip('Ближайшая аптека', addressController),
+                _buildSuggestionChip('Магазин одежды', addressController),
+                _buildSuggestionChip('Где поесть?', addressController),
+                _buildSuggestionChip('Банкомат Kaspi', addressController),
+                _buildSuggestionChip('Кофейня рядом', addressController),
+                _buildSuggestionChip('Супермаркет', addressController),
+              ],
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -846,19 +949,28 @@ class _NavigationPageState extends State<NavigationPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              final address = addressController.text;
-              if (address.isNotEmpty) {
+              final query = addressController.text;
+              if (query.isNotEmpty) {
                 Navigator.pop(context);
-                _tts.speak("Строю маршрут до $address");
-                _buildRoute(address);
+                _buildRoute(query);
               } else {
-                _tts.speak("Введите адрес");
+                _tts.speak("Введите запрос");
               }
             },
-            child: const Text('Построить маршрут'),
+            child: const Text('Найти'),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSuggestionChip(String text, TextEditingController controller) {
+    return ActionChip(
+      label: Text(text, style: const TextStyle(fontSize: 12)),
+      onPressed: () {
+        controller.text = text;
+      },
+      backgroundColor: Colors.blue.shade50,
     );
   }
 

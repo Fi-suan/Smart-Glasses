@@ -14,7 +14,14 @@
       "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -c)",
       "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -s flutter:V)",
       "Bash(flutter analyze:*)",
-      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -v time -s \"flutter:I\" \"*:E\")"
+      "Bash(\"C:/Users/zhant/AppData/Local/Android/sdk/platform-tools/adb.exe\" -s d3403245 logcat -v time -s \"flutter:I\" \"*:E\")",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(powershell -Command \"Get-WmiObject Win32_PnPEntity | Where-Object { $_Name -match ''COM|Serial|CH340|CP210|USB'' } | Select-Object Name, Status | Format-Table -AutoSize\")",
+      "Bash(mode)",
+      "Bash(flutter devices:*)",
+      "Bash(flutter run:*)",
+      "Bash(flutter pub get:*)"
     ]
   }
 }
