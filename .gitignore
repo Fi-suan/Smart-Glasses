@@ -16,10 +16,18 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# IDE
+.vscode/
+*.code-workspace
+.cursor/
+
+# AI assistants
+.claude/
+.aider*
+.continue/
+.copilot/
+CLAUDE.md
+claude_output*.txt
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -53,8 +61,10 @@ firebase_options.dart
 .env.local
 .env.*.local
 
-# API Keys
+# API Keys - IMPORTANT: Never commit API keys!
 **/api_keys.dart
+lib/core/config/api_keys.dart
+secrets.dart
 
 # Generated files
 *.g.dart
@@ -66,7 +76,15 @@ firebase_options.dart
 *.mov
 *.avi
 
-# IDE
-.vscode/
-*.code-workspace
+# Firmware documentation (contains setup instructions)
+firmware/*.md
+firmware/audio_files/
+
+# Local properties
+android/local.properties
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
 
